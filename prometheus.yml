@@ -1,0 +1,86 @@
+---
+- name: Install Prometheus
+  hosts: monitoring
+  become: yes
+  vars:
+    prom_version: "2.54.1"
+  tasks:
+    - name: Create prometheus user
+      user:
+        name: prometheus
+        shell: /sbin/nologin
+        system: yes
+        create_home: no
+
+    - name: Create directories
+      file:
+        path: "{{ item }}"
+        state: directory
+        owner: prometheus
+      loop:
+        - /etc/prometheus
+        - /var/lib/prometheus
+
+    - name: Download Prometheus
+      get_url:
+        url: "https://github.com/prometheus/prometheus/releases/download/v{{ prom_version }}/prometheus-{{ prom_version }}.linux-amd64.tar.gz"
+        dest: /tmp/prometheus.tar.gz
+
+    - name: Extract
+      unarchive:
+        src: /tmp/prometheus.tar.gz
+        dest: /tmp
+        remote_src: yes
+
+    - name: Copy binaries
+      copy:
+        src: "/tmp/prometheus-{{ prom_version }}.linux-amd64/{{ item }}"
+        dest: "/usr/local/bin/{{ item }}"
+        remote_src: yes
+        mode: '0755'
+      loop:
+        - prometheus
+        - promtool
+
+    - name: Prometheus config
+      copy:
+        dest: /etc/prometheus/prometheus.yml
+        owner: prometheus
+        content: |
+          global:
+            scrape_interval: 15s
+          scrape_configs:
+            - job_name: "node"
+              static_configs:
+                - targets: ["172.31.6.154:9100", "172.31.10.54:9100"]
+      notify: Restart prometheus
+
+    - name: Systemd service
+      copy:
+        dest: /etc/systemd/system/prometheus.service
+        content: |
+          [Unit]
+          Description=Prometheus
+          After=network.target
+
+          [Service]
+          User=prometheus
+          ExecStart=/usr/local/bin/prometheus \
+            --config.file=/etc/prometheus/prometheus.yml \
+            --storage.tsdb.path=/var/lib/prometheus
+
+          [Install]
+          WantedBy=multi-user.target
+
+    - name: Start Prometheus
+      systemd:
+        name: prometheus
+        state: started
+        enabled: yes
+        daemon_reload: yes
+
+  handlers:
+    - name: Restart prometheus
+      systemd:
+        name: prometheus
+        state: restarted
