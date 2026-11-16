@@ -52,7 +52,7 @@
           scrape_configs:
             - job_name: "node"
               static_configs:
-                - targets: ["172.31.6.154:9100", "172.31.10.54:9100"]
+                - targets: ["172.31.6.154:9100", "172.31.10.54:9100"]  # use the pvt ip of target server.
       notify: Restart prometheus
 
     - name: Systemd service
